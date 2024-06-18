@@ -5,18 +5,20 @@ from io import StringIO
 
 import torch
 
-#from torch.utils.data.dataset import Dataset
-#from transformers import TrainingArguments, Trainer, AutoTokenizer, AutoModelForSequenceClassification
+from torch.utils.data.dataset import Dataset
+from transformers import TrainingArguments, Trainer, AutoTokenizer, AutoModelForSequenceClassification
+import re
+from bs4 import BeautifulSoup
 
-# streamlit run main.py 
-# pip install mysql-connector-python
+
 
 st.write("Hello world !")
+
 
 DB_CONFIG = st.secrets["mysql"]
 
 try:
-    # Establish a connection to the database
+    # Etablir la connexion à la base de données
     conn = mysql.connector.connect(
         host=DB_CONFIG['host'],
         port=DB_CONFIG['port'],
@@ -27,16 +29,9 @@ try:
     if conn.is_connected():
         print('Connected to MySQL database')
 
-        # Now you can execute SQL queries
         cursor = conn.cursor()
-
-        # Execute the query
         cursor.execute('SELECT utilisateur_nom, utilisateur_prenom FROM Utilisateur')
-
-        # Fetch all rows from the result set
         rows = cursor.fetchall()
-
-        # Display the results using Streamlit
         for row in rows:
             st.write(f"{row[0]} {row[1]}")
 
@@ -51,10 +46,7 @@ finally:
         print('MySQL connection closed')
 
 
-
 """
-import re
-from bs4 import BeautifulSoup
 
 def remove_html_tags_func(text):
     soup = BeautifulSoup(text, 'html.parser')
