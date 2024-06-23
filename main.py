@@ -71,14 +71,14 @@ def extract_first_letters(ipc_str):
     return first_letters
 
 # Appliquer la fonction à la colonne 'IPC'
-df_ref['IPC level0'] = df_ref['IPC'].apply(extract_first_letters)
+df_ref['CPC level0'] = df_ref['CPC'].apply(extract_first_letters)
 
 
 
 unique_elements = set()
 
 # Parcourir chaque liste dans la colonne et ajouter les éléments à l'ensemble
-for sublist in df_ref['IPC level0']:
+for sublist in df_ref['CPC level0']:
     for item in sublist:
         unique_elements.add(item)
 
@@ -96,7 +96,7 @@ def replace_with_binary_list(sublist, element_to_index, num_unique_elements):
 
 # Appliquer la fonction à chaque sous-liste dans df['IPC level0']
 num_unique_elements = len(unique_elements)
-df_ref['IPC level0'] = df_ref['IPC level0'].apply(lambda sublist: replace_with_binary_list(sublist, element_to_index, num_unique_elements))
+df_ref['CPC level0'] = df_ref['CPC level0'].apply(lambda sublist: replace_with_binary_list(sublist, element_to_index, num_unique_elements))
 
 
 model = AutoModelForSequenceClassification.from_pretrained(
@@ -108,33 +108,33 @@ model = AutoModelForSequenceClassification.from_pretrained(
 model.load_state_dict(torch.load("models/mlt_label0"))
 model.eval()
 
-# Exemple de données
+tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True, trust_remote_code=True)
 
-sampled_df = df_ref.sample(n=100, random_state=1)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
 
-X = sampled_df['description'].tolist()
-y = np.array(sampled_df['IPC level0'].tolist())  # Labels correspondants
 
-# Diviser les données en ensembles d'entraînement et de test
-#X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
 
-# Définir le vectorizer et le modèle
-vectorizer = TfidfVectorizer()
-model = OneVsRestClassifier(LogisticRegression())
+unique_elements_1 = set()
 
-# Créer un pipeline
-pipeline = make_pipeline(vectorizer, model)
+# Parcourir chaque liste dans la colonne et ajouter les éléments à l'ensemble
+for sublist in df_ref['CPC level0']:
+    for item in sublist:
+        unique_elements_1.add(item)
 
-# Entraîner le modèle
-pipeline.fit(X, y)
+# Compter le nombre d'éléments distincts
+unique_elements_1 = sorted(list(unique_elements_1))
+element_to_index_1 = {element: idx for idx, element in enumerate(unique_elements_1)}
+
+
 
 import lime
-import lime.lime_text
-
+#import lime.lime_text
+from lime.lime_text import LimeTextExplainer
 class_names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
 # Créer un explainer LIME pour le texte
-explainer = lime.lime_text.LimeTextExplainer(class_names=class_names)
+explainer = LimeTextExplainer(class_names=[str(i) for i in range(8)])
 
 
 
@@ -163,9 +163,59 @@ def replace_fig_with_img(text):
 def remove_appos(text):
     return re.sub(r"^'|'$", "", text)
 
+def predict_proba(texts):
+    # Tokenisation et conversion en tenseurs
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
+    inputs = {key: value.to(device) for key, value in inputs.items()}
+    
+    # Prédiction
+    with torch.no_grad():
+        outputs = model(**inputs)
+    
+    # Conversion en probabilités (si nécessaire)
+    probabilities = torch.sigmoid(outputs.logits).cpu().numpy()
+    return probabilities
 
 
+def traitement(val_text):
+    #chargement de la description à expliquer
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    inputs = tokenizer(val_text,padding=True, truncation=True, return_tensors="pt")
+    inputs = inputs.to(device)
+    #selction des labels avec une probabilité supérieur 0.5
+    # Désactivez les gradients pour économiser de la mémoire
+    with torch.no_grad():
+        outputs = model(**inputs)
 
+    # Sorties du modèle
+    logits = outputs.logits
+
+    # Appliquez une fonction sigmoïde pour obtenir les probabilités
+    probabilities = torch.sigmoid(logits)
+
+    # Convertir les probabilités en étiquettes avec un seuil (par exemple, 0.5)
+    threshold = 0.5
+    predictions = (probabilities > threshold).int()
+
+    # Initialisation l'explainer LIme pour le texte
+    explainer = LimeTextExplainer(class_names=list(element_to_index_1.keys()))
+
+    # Trouver les trois premières phrases
+
+    sentences = re.split(r'(?<=[.:;])\s', val_text)
+    summary = ' '.join(sentences[:4])
+
+    # Explication de la prédiction
+    explanation = explainer.explain_instance(
+    summary,
+    predict_proba,
+    num_features=10,  # Nombre de mots à afficher dans l'explication
+    labels=predictions[0].nonzero().squeeze().tolist()  # Labels à expliquer
+    )
+    return explanation.as_html(text=True)
 
 
 if input_type == "Uploader un fichier":
@@ -176,20 +226,9 @@ if input_type == "Uploader un fichier":
         df_user['description'] = df_user['description'].apply(remove_url_func)
         df_user['description'] = df_user['description'].apply(remove_extra_whitespaces_func)
         df_user['description'] = df_user['description'].apply(replace_fig_with_img)
-        st.write(df_user)
-        X_user = df_user['description'].tolist()
-        text_instance = X_user[0][:2000]
-        # Obtenir les probabilités de prédiction pour cet exemple
-        proba = pipeline.predict_proba([text_instance])
-        # Identifier les deux classes avec les probabilités les plus élevées
-        top_labels = np.argsort(proba[0])[::-1][:2]
-        st.write(top_labels)
-        # Obtenir une explication pour cet exemple
-        exp = explainer.explain_instance(text_instance, pipeline.predict_proba, num_features=6, labels=top_labels)
-        # Afficher l'explication pour les deux classes les plus représentées
-        for label in top_labels:
-            tempo_html = exp.as_html(labels=(label,))
-            components.html(tempo_html, scrolling=True)
+        st.write(df_user['description'].to_list())
+        tempo_html = traitement(df_user['description'][0])
+        components.html(tempo_html, scrolling=True)
 
 
 elif input_type == "Copier la description du brevet":
@@ -218,21 +257,13 @@ elif input_type == "Copier la description du brevet":
         prompt = remove_extra_whitespaces_func(prompt)
         prompt = replace_fig_with_img(prompt)
         text_instance = prompt
-        # Obtenir les probabilités de prédiction pour cet exemple
-        proba = pipeline.predict_proba([text_instance])
-        # Identifier les deux classes avec les probabilités les plus élevées
-        top_labels = np.argsort(proba[0])[::-1][:2]
-        exp = explainer.explain_instance(text_instance, pipeline.predict_proba, num_features=6, labels=top_labels)
+        tempo_html = traitement(prompt)
         # Afficher l'explication pour les deux classes les plus représentées
         #affichage de la reponse dans la chat
         with st.chat_message("Identifieur"):
-            for label in top_labels:
-                components.html(exp.as_html(text=True, labels=(label,)), scrolling=True)
+            components.html(tempo_html, scrolling=True)
         #ajout du message à l'historique
-        print(top_labels)
-        for label in top_labels:
-            tempo_html = exp.as_html(text=True, labels=(label,))
-            st.session_state.messages.append({"role": "Identifieur", "content": tempo_html})
+        st.session_state.messages.append({"role": "Identifieur", "content": tempo_html})
 
 
 
