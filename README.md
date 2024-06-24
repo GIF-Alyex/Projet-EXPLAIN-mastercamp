@@ -27,3 +27,9 @@ Il faut installer MySQL Connector:
 Il faut installer SQLAlchemy:   
 `pip install SQLAlchemy`
 
+
+## Dossiers Additionnels
+
+Un dossier *data* dans lequel on place les *.csv*.
+
+Un dossier *models* dans lequel on place les modèles.
