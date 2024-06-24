@@ -6,7 +6,7 @@ from io import StringIO
 import torch
 
 from torch.utils.data.dataset import Dataset
-from transformers import TrainingArguments, Trainer, AutoTokenizer, AutoModelForSequenceClassification
+from transformers import TrainingArguments, Trainer, AutoTokenizer, AutoModelForSequenceClassification, DistilBertForSequenceClassification, DistilBertTokenizer
 import re
 from bs4 import BeautifulSoup
 
@@ -70,9 +70,24 @@ def extract_first_letters(ipc_str):
     first_letters = list({item[0] for item in ipc_list})
     return first_letters
 
+def extract_first_letters2(cpc_str):
+    # Convertir la chaîne de caractères en liste
+    ipc_list = eval(cpc_str)
+    # Extraire la première lettre de chaque élément et prendre les distinctes
+    first_letters = list({item[:3] for item in ipc_list})
+    return first_letters
+
+def extract_first_letters3(cpc_str):
+    # Convertir la chaîne de caractères en liste
+    ipc_list = eval(cpc_str)
+    # Extraire la première lettre de chaque élément et prendre les distinctes
+    first_letters = list({item for item in ipc_list})
+    return first_letters
+
 # Appliquer la fonction à la colonne 'IPC'
 df_ref['CPC level0'] = df_ref['CPC'].apply(extract_first_letters)
-
+df_ref['CPC level1'] = df_ref['CPC'].apply(extract_first_letters2)
+df_ref['CPC level2'] = df_ref['CPC'].apply(extract_first_letters3)
 
 
 unique_elements = set()
@@ -86,39 +101,10 @@ for sublist in df_ref['CPC level0']:
 unique_elements = sorted(list(unique_elements))
 element_to_index = {element: idx for idx, element in enumerate(unique_elements)}
 
-
-def replace_with_binary_list(sublist, element_to_index, num_unique_elements):
-    binary_list = [0.0] * num_unique_elements
-    for item in sublist:
-        if item in element_to_index:
-            binary_list[element_to_index[item]] = 1.0
-    return binary_list
-
-# Appliquer la fonction à chaque sous-liste dans df['IPC level0']
-num_unique_elements = len(unique_elements)
-df_ref['CPC level0'] = df_ref['CPC level0'].apply(lambda sublist: replace_with_binary_list(sublist, element_to_index, num_unique_elements))
-
-
-model = AutoModelForSequenceClassification.from_pretrained(
-    "bert-base-uncased",
-    problem_type="multi_label_classification",
-    num_labels=8
-)
-
-model.load_state_dict(torch.load("models/mlt_label0"))
-model.eval()
-
-tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True, trust_remote_code=True)
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
-
-
-
 unique_elements_1 = set()
 
 # Parcourir chaque liste dans la colonne et ajouter les éléments à l'ensemble
-for sublist in df_ref['CPC level0']:
+for sublist in df_ref['CPC level1']:
     for item in sublist:
         unique_elements_1.add(item)
 
@@ -126,15 +112,43 @@ for sublist in df_ref['CPC level0']:
 unique_elements_1 = sorted(list(unique_elements_1))
 element_to_index_1 = {element: idx for idx, element in enumerate(unique_elements_1)}
 
+def replace_with_binary_list(sublist, element_to_index_1, num_unique_elements_1):
+    binary_list = [0.0] * num_unique_elements_1
+    for item in sublist:
+        if item in element_to_index_1:
+            binary_list[element_to_index_1[item]] = 1.0
+    return binary_list
+
+# Appliquer la fonction à chaque sous-liste dans df['IPC level0']
+num_unique_elements_1 = len(unique_elements_1)
+df_ref['CPC level1'] = df_ref['CPC level1'].apply(lambda sublist: replace_with_binary_list(sublist, element_to_index_1, num_unique_elements_1))
+
+
+print(len(element_to_index_1))
+
+model = DistilBertForSequenceClassification.from_pretrained(
+    "distilbert-base-uncased",
+    problem_type="multi_label_classification",
+    num_labels = 128
+)
+
+model.load_state_dict(torch.load("models\distil_mlt_label_128_10000"))
+model.eval()
+
+tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased", do_lower_case=True, trust_remote_code=True)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+
+
+
 
 
 import lime
 #import lime.lime_text
 from lime.lime_text import LimeTextExplainer
-class_names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
-# Créer un explainer LIME pour le texte
-explainer = LimeTextExplainer(class_names=[str(i) for i in range(8)])
 
 
 
@@ -163,10 +177,12 @@ def replace_fig_with_img(text):
 def remove_appos(text):
     return re.sub(r"^'|'$", "", text)
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
 def predict_proba(texts):
     # Tokenisation et conversion en tenseurs
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
+    
     inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
     inputs = {key: value.to(device) for key, value in inputs.items()}
     
@@ -179,10 +195,10 @@ def predict_proba(texts):
     return probabilities
 
 
+
+
 def traitement(val_text):
     #chargement de la description à expliquer
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
     inputs = tokenizer(val_text,padding=True, truncation=True, return_tensors="pt")
     inputs = inputs.to(device)
     #selction des labels avec une probabilité supérieur 0.5
@@ -206,7 +222,7 @@ def traitement(val_text):
     # Trouver les trois premières phrases
 
     sentences = re.split(r'(?<=[.:;])\s', val_text)
-    summary = ' '.join(sentences[:4])
+    summary = ' '.join(sentences[:1])
 
     # Explication de la prédiction
     explanation = explainer.explain_instance(
