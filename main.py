@@ -2,15 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import torch
-
 from bs4 import BeautifulSoup
 import re
-import streamlit_authenticator as stauth
-from streamlit_authenticator import Authenticate    
-
+  
 from streamlit_navigation_bar import st_navbar
-
-import pages as pg
 import os
 
 
