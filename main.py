@@ -37,19 +37,12 @@ try:
     if conn.is_connected():
         print('Connected to MySQL database')
 
-        cursor = conn.cursor()
-        cursor.execute('SELECT utilisateur_nom, utilisateur_prenom FROM Utilisateur')
-        rows = cursor.fetchall()
-        for row in rows:
-            st.write(f"{row[0]} {row[1]}")
-
 except mysql.connector.Error as e:
     print(f"Error connecting to MySQL: {e}")
 
 finally:
     # Close the cursor and connection
     if 'conn' in locals() and conn.is_connected():
-        cursor.close()
         conn.close()
         print('MySQL connection closed')
 
