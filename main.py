@@ -19,6 +19,9 @@ from sklearn.multioutput import MultiOutputClassifier
 from sklearn.multiclass import OneVsRestClassifier
 import streamlit.components.v1 as components
 
+from transformers_interpret import MultiLabelClassificationExplainer, SequenceClassificationExplainer
+from transformers import TextClassificationPipeline, pipeline, DistilBertForSequenceClassification, DistilBertTokenizer
+
 
 st.write("Hello world !")
 
@@ -47,87 +50,25 @@ finally:
         print('MySQL connection closed')
 
 
-df_ref = pd.read_csv("data/EFREI - LIPSTIP - 50k elements EPO.csv", nrows=1000)
-
-
-df_ref = df_ref[df_ref['IPC'] != '[]']
-
 import re
 from bs4 import BeautifulSoup
 
 
-def extract_first_letters(ipc_str):
-    # Convertir la chaîne de caractères en liste
-    ipc_list = eval(ipc_str)
-    # Extraire la première lettre de chaque élément et prendre les distinctes
-    first_letters = list({item[0] for item in ipc_list})
-    return first_letters
 
-# Appliquer la fonction à la colonne 'IPC'
-df_ref['IPC level0'] = df_ref['IPC'].apply(extract_first_letters)
-
-
-
-unique_elements = set()
-
-# Parcourir chaque liste dans la colonne et ajouter les éléments à l'ensemble
-for sublist in df_ref['IPC level0']:
-    for item in sublist:
-        unique_elements.add(item)
-
-# Compter le nombre d'éléments distincts
-unique_elements = sorted(list(unique_elements))
-element_to_index = {element: idx for idx, element in enumerate(unique_elements)}
-
-
-def replace_with_binary_list(sublist, element_to_index, num_unique_elements):
-    binary_list = [0.0] * num_unique_elements
-    for item in sublist:
-        if item in element_to_index:
-            binary_list[element_to_index[item]] = 1.0
-    return binary_list
-
-# Appliquer la fonction à chaque sous-liste dans df['IPC level0']
-num_unique_elements = len(unique_elements)
-df_ref['IPC level0'] = df_ref['IPC level0'].apply(lambda sublist: replace_with_binary_list(sublist, element_to_index, num_unique_elements))
-
-
-model = AutoModelForSequenceClassification.from_pretrained(
-    "bert-base-uncased",
+# Chargement du modèle
+model = DistilBertForSequenceClassification.from_pretrained(
+    "distilbert-base-uncased",
     problem_type="multi_label_classification",
-    num_labels=8
+    num_labels = 128
 )
 
-model.load_state_dict(torch.load("models/mlt_label0"))
+tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased", do_lower_case=True, trust_remote_code=True, use_fast=True)
+
+model.load_state_dict(torch.load("models\distil_mlt_label_128_10000"))
 model.eval()
 
-# Exemple de données
-
-sampled_df = df_ref.sample(n=100, random_state=1)
-
-X = sampled_df['description'].tolist()
-y = np.array(sampled_df['IPC level0'].tolist())  # Labels correspondants
-
-# Diviser les données en ensembles d'entraînement et de test
-#X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-
-# Définir le vectorizer et le modèle
-vectorizer = TfidfVectorizer()
-model = OneVsRestClassifier(LogisticRegression())
-
 # Créer un pipeline
-pipeline = make_pipeline(vectorizer, model)
-
-# Entraîner le modèle
-pipeline.fit(X, y)
-
-import lime
-import lime.lime_text
-
-class_names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-
-# Créer un explainer LIME pour le texte
-explainer = lime.lime_text.LimeTextExplainer(class_names=class_names)
+identificateur_label = pipeline("text-classification", model=model, tokenizer=tokenizer)
 
 
 
@@ -158,7 +99,23 @@ def remove_appos(text):
 
 
 
+def prediction_analyse(texte_input):
+    if len(texte_input) > 512:
+        texte_input = texte_input[:512]
+    label_predict = identificateur_label(texte_input, top_k=2)
+    list_label = [label_predict[i]["label"] for i in range(len(label_predict))]
+    cls_explainer = SequenceClassificationExplainer(
+    model,
+    tokenizer
+    )
+    temp_list = [(label ,(sorted(cls_explainer(texte_input, class_name=label), key=(lambda x: x[1]), reverse=True))[:2]) for label in list_label]
+    key_word = dict(temp_list)
+    return key_word
 
+
+def afficheur_resultat(resulat_analyse):
+    res = "\n".join([i + ", Mots clées : " + (", ".join([j[0] for j in resulat_analyse[i]])) for i in resulat_analyse])
+    return res
 
 
 if input_type == "Uploader un fichier":
@@ -172,18 +129,10 @@ if input_type == "Uploader un fichier":
         st.write(df_user)
         X_user = df_user['description'].tolist()
         text_instance = X_user[0][:2000]
-        # Obtenir les probabilités de prédiction pour cet exemple
-        proba = pipeline.predict_proba([text_instance])
-        # Identifier les deux classes avec les probabilités les plus élevées
-        top_labels = np.argsort(proba[0])[::-1][:2]
-        st.write(top_labels)
-        # Obtenir une explication pour cet exemple
-        exp = explainer.explain_instance(text_instance, pipeline.predict_proba, num_features=6, labels=top_labels)
-        # Afficher l'explication pour les deux classes les plus représentées
-        for label in top_labels:
-            tempo_html = exp.as_html(labels=(label,))
-            components.html(tempo_html, scrolling=True)
-
+        analysis = prediction_analyse(text_instance)
+        st.write(afficheur_resultat(analysis))
+        
+        
 
 elif input_type == "Copier la description du brevet":
     st.title("Veuillez copier la description dans le chat")
@@ -194,10 +143,7 @@ elif input_type == "Copier la description du brevet":
     # affiche de l'historique des message de la session
     for messages in st.session_state.messages:
         with st.chat_message(messages["role"]):
-            if messages["role"] == "utilisateur":
-                st.markdown(messages["content"])
-            else:
-                components.html(messages["content"], scrolling=True)
+            st.markdown(messages["content"])
     
     # widget accpetant l'input de l'utilisateur
     if prompt := st.chat_input("Copiez la description"):
@@ -212,20 +158,15 @@ elif input_type == "Copier la description du brevet":
         prompt = replace_fig_with_img(prompt)
         text_instance = prompt
         # Obtenir les probabilités de prédiction pour cet exemple
-        proba = pipeline.predict_proba([text_instance])
-        # Identifier les deux classes avec les probabilités les plus élevées
-        top_labels = np.argsort(proba[0])[::-1][:2]
-        exp = explainer.explain_instance(text_instance, pipeline.predict_proba, num_features=6, labels=top_labels)
+        analysis = prediction_analyse(text_instance)
+
         # Afficher l'explication pour les deux classes les plus représentées
         #affichage de la reponse dans la chat
+        tempo_string = afficheur_resultat(analysis)
         with st.chat_message("Identifieur"):
-            for label in top_labels:
-                components.html(exp.as_html(text=True, labels=(label,)), scrolling=True)
+            st.markdown(tempo_string)
         #ajout du message à l'historique
-        print(top_labels)
-        for label in top_labels:
-            tempo_html = exp.as_html(text=True, labels=(label,))
-            st.session_state.messages.append({"role": "Identifieur", "content": tempo_html})
+        st.session_state.messages.append({"role": "Identifieur", "content": tempo_string})
 
 
 
