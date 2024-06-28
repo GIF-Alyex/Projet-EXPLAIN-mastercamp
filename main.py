@@ -21,9 +21,8 @@ import streamlit.components.v1 as components
 
 from transformers_interpret import MultiLabelClassificationExplainer, SequenceClassificationExplainer
 from transformers import TextClassificationPipeline, pipeline, DistilBertForSequenceClassification, DistilBertTokenizer
+import time as ti
 
-
-st.write("Hello world !")
 
 
 DB_CONFIG = st.secrets["mysql"]
@@ -53,6 +52,11 @@ finally:
 import re
 from bs4 import BeautifulSoup
 
+dictionnaire_convertion_label = {0: 'A01', 1: 'A21', 2: 'A22', 3: 'A23', 4: 'A24', 5: 'A41', 6: 'A42', 7: 'A43', 8: 'A44', 9: 'A45', 10: 'A46', 11: 'A47', 12: 'A61', 13: 'A62', 14: 'A63', 15: 'B01', 16: 'B02', 17: 'B03', 18: 'B04', 19: 'B05', 20: 'B06', 21: 'B07', 22: 'B08', 23: 'B09', 24: 'B21', 25: 'B22', 26: 'B23', 27: 'B24', 28: 'B25', 29: 'B26', 30: 'B27', 31: 'B28', 32: 'B29', 33: 'B30', 34: 'B31', 35: 'B32', 36: 'B33', 37: 'B41', 38: 'B42', 39: 'B43', 40: 'B44', 41: 'B60', 42: 'B61', 43: 'B62', 44: 'B63', 45: 'B64', 46: 'B65', 47: 'B66', 48: 'B67', 49: 'B68', 50: 'B81', 51: 'B82', 52: 'C01', 53: 'C02', 54: 'C03', 55: 'C04', 56: 'C05', 57: 'C06', 58: 'C07', 59: 'C08', 60: 'C09', 61: 'C10', 62: 'C11', 63: 'C12', 64: 'C13', 65: 'C14', 66: 'C21', 67: 'C22', 68: 'C23', 69: 'C25', 70: 'C30', 71: 'C40', 72: 'D01', 73: 'D02', 74: 'D03', 75: 'D04', 76: 'D05', 77: 'D06', 78: 'D07', 79: 'D10', 80: 'D21', 81: 'E01', 82: 'E02', 83: 'E03', 84: 'E04', 85: 'E05', 86: 'E06', 87: 'E21', 88: 'F01', 89: 'F02', 90: 'F03', 91: 'F04', 92: 'F05', 93: 'F15', 94: 'F16', 95: 'F17', 96: 'F21', 97: 'F22', 98: 'F23', 99: 'F24', 100: 'F25', 101: 'F26', 102: 'F27', 103: 'F28', 104: 'F41', 105: 'F42', 106: 'G01', 107: 'G02', 108: 'G03', 109: 'G04', 110: 'G05', 111: 'G06', 112: 'G07', 113: 'G08', 114: 'G09', 115: 'G10', 116: 'G11', 117: 'G16', 118: 'G21', 119: 'H01', 120: 'H02', 121: 'H03', 122: 'H04', 123: 'H05', 124: 'H10', 125: 'Y02', 126: 'Y04', 127: 'Y10'}
+dictionnaire_convertion_label_2 = dict([(f"LABEL_{i[0]}", i[1]) for i in dictionnaire_convertion_label.items()])
+
+def convertit_label(nom_label):
+    return "<h5>Label : " + dictionnaire_convertion_label[int(nom_label[6:])] + "</h5>"
 
 
 # Chargement du modèle
@@ -98,23 +102,41 @@ def remove_appos(text):
     return re.sub(r"^'|'$", "", text)
 
 
-
 def prediction_analyse(texte_input):
     if len(texte_input) > 512:
         texte_input = texte_input[:512]
     label_predict = identificateur_label(texte_input, top_k=2)
-    list_label = [label_predict[i]["label"] for i in range(len(label_predict))]
     cls_explainer = SequenceClassificationExplainer(
     model,
     tokenizer
     )
-    temp_list = [(label ,(sorted(cls_explainer(texte_input, class_name=label), key=(lambda x: x[1]), reverse=True))[:2]) for label in list_label]
+    temp_list = [(label_predict[i]["label"] , dict([("mot_cle",(sorted(cls_explainer(texte_input, class_name=label_predict[i]["label"]), key=(lambda x: x[1]), reverse=True))[:2]), ("score", label_predict[i]["score"])])) for i in range(len(label_predict))]
     key_word = dict(temp_list)
-    return key_word
+    content_file = ""
+    for i in range(len(label_predict)):
+        cls_explainer(texte_input, class_name=label_predict[i]["label"])
+        cls_explainer.visualize("distilbert_viz.html")
+        file = open(r"./distilbert_viz.html","r")
+        content_file += file.read()
+        print(content_file)
+        content_file += "<br>"
+        print(content_file)
+        file.close()
+    file = open(r"./distilbert_viz.html","w")
+    file.write("")
+    file.close()
+    for i in range(len(label_predict)):
+        content_file = content_file.replace(label_predict[i]["label"], dictionnaire_convertion_label_2[label_predict[i]["label"]])
+        content_file = content_file.replace(label_predict[i]["label"][6:], dictionnaire_convertion_label_2[label_predict[i]["label"]])
+    return key_word, content_file
 
+
+def get_score(dic_label, label):
+    return dic_label[label]["score"]
 
 def afficheur_resultat(resulat_analyse):
-    res = "\n".join([i + ", Mots clées : " + (", ".join([j[0] for j in resulat_analyse[i]])) for i in resulat_analyse])
+    tempo_list_string = [convertit_label(i) + f"score : {get_score(dic_label=resulat_analyse, label=i) * 100 :.2f} %" + "<br>Mots clés :<ul> " + ("".join([f"<li>{j[0]} (correlation : {j[1]:.2f})</li>"  for j in resulat_analyse[i]["mot_cle"]])) + "</ul>" for i in resulat_analyse ] 
+    res = "<ol>" + ("".join(f"<li>{e}</li>" for e in tempo_list_string)) + "</ol>"
     return res
 
 
@@ -129,8 +151,9 @@ if input_type == "Uploader un fichier":
         st.write(df_user)
         X_user = df_user['description'].tolist()
         text_instance = X_user[0][:2000]
-        analysis = prediction_analyse(text_instance)
-        st.write(afficheur_resultat(analysis))
+        analysis, file_data = prediction_analyse(text_instance)
+        st.html(afficheur_resultat(analysis))
+        st.download_button(label="rapport", data=file_data, file_name=f"rapport_{ti.time()}.html")
         
         
 
@@ -143,7 +166,11 @@ elif input_type == "Copier la description du brevet":
     # affiche de l'historique des message de la session
     for messages in st.session_state.messages:
         with st.chat_message(messages["role"]):
-            st.markdown(messages["content"])
+            if messages["role"] != "Identifieur":
+                st.markdown(messages["content"])
+            else:
+                st.html(messages["content"][0])
+                st.download_button(label="rapport", data=messages["content"][1], file_name=f"rapport_{ti.time()}.html")
     
     # widget accpetant l'input de l'utilisateur
     if prompt := st.chat_input("Copiez la description"):
@@ -158,15 +185,16 @@ elif input_type == "Copier la description du brevet":
         prompt = replace_fig_with_img(prompt)
         text_instance = prompt
         # Obtenir les probabilités de prédiction pour cet exemple
-        analysis = prediction_analyse(text_instance)
+        analysis, file_data = prediction_analyse(text_instance)
 
         # Afficher l'explication pour les deux classes les plus représentées
         #affichage de la reponse dans la chat
         tempo_string = afficheur_resultat(analysis)
         with st.chat_message("Identifieur"):
-            st.markdown(tempo_string)
+            st.html(tempo_string)
+            st.download_button(label="rapport", data=file_data, file_name=f"rapport_{ti.time()}.html")
         #ajout du message à l'historique
-        st.session_state.messages.append({"role": "Identifieur", "content": tempo_string})
+        st.session_state.messages.append({"role": "Identifieur", "content": [tempo_string, file_data]})
 
 
 
