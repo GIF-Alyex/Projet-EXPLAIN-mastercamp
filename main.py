@@ -82,12 +82,12 @@ input_type = st.radio("Choisissez la manière de d'entre la description", ["Uplo
 
 
 
-def remove_html_tags_func(text):
-    soup = BeautifulSoup(text, 'html.parser')
-    for tag in soup.find_all(True):
-        tag.name = "p"
-    text = soup.get_text(separator=' ')
-    return re.sub(r'\s\s+', ' ', text)
+
+def remove_html_tags_func_regex(text):
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'\s\s+', ' ', text)
+    text = re.sub(r'-->', '', text)
+    return text
 
 def remove_url_func(text):
     return re.sub(r'https?://\S+|www\.\S+', '', text)
@@ -110,11 +110,11 @@ def prediction_analyse(texte_input):
     model,
     tokenizer
     )
-    temp_list = [(label_predict[i]["label"] , dict([("mot_cle",(sorted(cls_explainer(texte_input, class_name=label_predict[i]["label"]), key=(lambda x: x[1]), reverse=True))[:2]), ("score", label_predict[i]["score"])])) for i in range(len(label_predict))]
-    key_word = dict(temp_list)
+    temp_list = []
     content_file = ""
     for i in range(len(label_predict)):
-        cls_explainer(texte_input, class_name=label_predict[i]["label"])
+        tempo_explainer = cls_explainer(texte_input, class_name=label_predict[i]["label"])
+        temp_list.append((label_predict[i]["label"] , dict([("mot_cle",(sorted(tempo_explainer, key=(lambda x: x[1]), reverse=True))[:2]), ("score", label_predict[i]["score"])])))
         cls_explainer.visualize("distilbert_viz.html")
         file = open(r"./distilbert_viz.html","r")
         content_file += file.read()
@@ -122,6 +122,9 @@ def prediction_analyse(texte_input):
         content_file += "<br>"
         print(content_file)
         file.close()
+    #temp_list = [(label_predict[i]["label"] , dict([("mot_cle",(sorted(cls_explainer(texte_input, class_name=label_predict[i]["label"]), key=(lambda x: x[1]), reverse=True))[:2]), ("score", label_predict[i]["score"])])) for i in range(len(label_predict))]
+    #content_file = content_file.replace(label_predict[len(label_predict) - 1]["label"][6:], dictionnaire_convertion_label_2[label_predict[len(label_predict) - 1]["label"]])
+    key_word = dict(temp_list)
     file = open(r"./distilbert_viz.html","w")
     file.write("")
     file.close()
@@ -144,7 +147,7 @@ if input_type == "Uploader un fichier":
     file_uploaded = st.file_uploader("Mettez votre brevet", type=None, accept_multiple_files=False, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible")
     if file_uploaded is not None:
         df_user = pd.read_csv(file_uploaded, sep=";")
-        df_user['description'] = df_user['description'].apply(remove_html_tags_func)
+        df_user['description'] = df_user['description'].apply(remove_html_tags_func_regex)
         df_user['description'] = df_user['description'].apply(remove_url_func)
         df_user['description'] = df_user['description'].apply(remove_extra_whitespaces_func)
         df_user['description'] = df_user['description'].apply(replace_fig_with_img)
@@ -179,7 +182,7 @@ elif input_type == "Copier la description du brevet":
             st.markdown(prompt)
         #ajout du nouveau message 
         st.session_state.messages.append({"role": "utilisateur", "content": prompt})
-        prompt = remove_html_tags_func(prompt)
+        prompt = remove_html_tags_func_regex(prompt)
         prompt = remove_url_func(prompt)
         prompt = remove_extra_whitespaces_func(prompt)
         prompt = replace_fig_with_img(prompt)
