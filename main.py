@@ -8,7 +8,6 @@ import torch
 from torch.utils.data.dataset import Dataset
 from transformers import TrainingArguments, Trainer, AutoTokenizer, AutoModelForSequenceClassification
 import re
-from bs4 import BeautifulSoup
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -19,115 +18,36 @@ from sklearn.multioutput import MultiOutputClassifier
 from sklearn.multiclass import OneVsRestClassifier
 import streamlit.components.v1 as components
 
+from transformers_interpret import MultiLabelClassificationExplainer, SequenceClassificationExplainer
+from transformers import TextClassificationPipeline, pipeline, DistilBertForSequenceClassification, DistilBertTokenizer
+import time as ti
 
-st.write("Hello world !")
 
 
 DB_CONFIG = st.secrets["mysql"]
 
-try:
-    # Etablir la connexion à la base de données
-    conn = mysql.connector.connect(
-        host=DB_CONFIG['host'],
-        port=DB_CONFIG['port'],
-        database=DB_CONFIG['database'],
-        user=DB_CONFIG['user'],
-        password=DB_CONFIG['password']
-    )
-    if conn.is_connected():
-        print('Connected to MySQL database')
 
-except mysql.connector.Error as e:
-    print(f"Error connecting to MySQL: {e}")
+dictionnaire_convertion_label = {0: 'A01', 1: 'A21', 2: 'A22', 3: 'A23', 4: 'A24', 5: 'A41', 6: 'A42', 7: 'A43', 8: 'A44', 9: 'A45', 10: 'A46', 11: 'A47', 12: 'A61', 13: 'A62', 14: 'A63', 15: 'B01', 16: 'B02', 17: 'B03', 18: 'B04', 19: 'B05', 20: 'B06', 21: 'B07', 22: 'B08', 23: 'B09', 24: 'B21', 25: 'B22', 26: 'B23', 27: 'B24', 28: 'B25', 29: 'B26', 30: 'B27', 31: 'B28', 32: 'B29', 33: 'B30', 34: 'B31', 35: 'B32', 36: 'B33', 37: 'B41', 38: 'B42', 39: 'B43', 40: 'B44', 41: 'B60', 42: 'B61', 43: 'B62', 44: 'B63', 45: 'B64', 46: 'B65', 47: 'B66', 48: 'B67', 49: 'B68', 50: 'B81', 51: 'B82', 52: 'C01', 53: 'C02', 54: 'C03', 55: 'C04', 56: 'C05', 57: 'C06', 58: 'C07', 59: 'C08', 60: 'C09', 61: 'C10', 62: 'C11', 63: 'C12', 64: 'C13', 65: 'C14', 66: 'C21', 67: 'C22', 68: 'C23', 69: 'C25', 70: 'C30', 71: 'C40', 72: 'D01', 73: 'D02', 74: 'D03', 75: 'D04', 76: 'D05', 77: 'D06', 78: 'D07', 79: 'D10', 80: 'D21', 81: 'E01', 82: 'E02', 83: 'E03', 84: 'E04', 85: 'E05', 86: 'E06', 87: 'E21', 88: 'F01', 89: 'F02', 90: 'F03', 91: 'F04', 92: 'F05', 93: 'F15', 94: 'F16', 95: 'F17', 96: 'F21', 97: 'F22', 98: 'F23', 99: 'F24', 100: 'F25', 101: 'F26', 102: 'F27', 103: 'F28', 104: 'F41', 105: 'F42', 106: 'G01', 107: 'G02', 108: 'G03', 109: 'G04', 110: 'G05', 111: 'G06', 112: 'G07', 113: 'G08', 114: 'G09', 115: 'G10', 116: 'G11', 117: 'G16', 118: 'G21', 119: 'H01', 120: 'H02', 121: 'H03', 122: 'H04', 123: 'H05', 124: 'H10', 125: 'Y02', 126: 'Y04', 127: 'Y10'}
+dictionnaire_convertion_label_2 = dict([(f"LABEL_{i[0]}", i[1]) for i in dictionnaire_convertion_label.items()])
 
-finally:
-    # Close the cursor and connection
-    if 'conn' in locals() and conn.is_connected():
-        conn.close()
-        print('MySQL connection closed')
+def convertit_label(nom_label):
+    return "<h5>Label : " + dictionnaire_convertion_label[int(nom_label[6:])] + "</h5>"
 
 
-df_ref = pd.read_csv("data/EFREI - LIPSTIP - 50k elements EPO.csv", nrows=1000)
-
-
-df_ref = df_ref[df_ref['IPC'] != '[]']
-
-import re
-from bs4 import BeautifulSoup
-
-
-def extract_first_letters(ipc_str):
-    # Convertir la chaîne de caractères en liste
-    ipc_list = eval(ipc_str)
-    # Extraire la première lettre de chaque élément et prendre les distinctes
-    first_letters = list({item[0] for item in ipc_list})
-    return first_letters
-
-# Appliquer la fonction à la colonne 'IPC'
-df_ref['IPC level0'] = df_ref['IPC'].apply(extract_first_letters)
-
-
-
-unique_elements = set()
-
-# Parcourir chaque liste dans la colonne et ajouter les éléments à l'ensemble
-for sublist in df_ref['IPC level0']:
-    for item in sublist:
-        unique_elements.add(item)
-
-# Compter le nombre d'éléments distincts
-unique_elements = sorted(list(unique_elements))
-element_to_index = {element: idx for idx, element in enumerate(unique_elements)}
-
-
-def replace_with_binary_list(sublist, element_to_index, num_unique_elements):
-    binary_list = [0.0] * num_unique_elements
-    for item in sublist:
-        if item in element_to_index:
-            binary_list[element_to_index[item]] = 1.0
-    return binary_list
-
-# Appliquer la fonction à chaque sous-liste dans df['IPC level0']
-num_unique_elements = len(unique_elements)
-df_ref['IPC level0'] = df_ref['IPC level0'].apply(lambda sublist: replace_with_binary_list(sublist, element_to_index, num_unique_elements))
-
-
-model = AutoModelForSequenceClassification.from_pretrained(
-    "bert-base-uncased",
+# Chargement du modèle
+model = DistilBertForSequenceClassification.from_pretrained(
+    "distilbert-base-uncased",
     problem_type="multi_label_classification",
-    num_labels=8
+    num_labels = 128
 )
 
-model.load_state_dict(torch.load("models/mlt_label0"))
+tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased", do_lower_case=True, trust_remote_code=True, use_fast=True)
+
+model.load_state_dict(torch.load("models\distil_mlt_label_128_10000"))
 model.eval()
 
-# Exemple de données
-
-sampled_df = df_ref.sample(n=100, random_state=1)
-
-X = sampled_df['description'].tolist()
-y = np.array(sampled_df['IPC level0'].tolist())  # Labels correspondants
-
-# Diviser les données en ensembles d'entraînement et de test
-#X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-
-# Définir le vectorizer et le modèle
-vectorizer = TfidfVectorizer()
-model = OneVsRestClassifier(LogisticRegression())
-
 # Créer un pipeline
-pipeline = make_pipeline(vectorizer, model)
-
-# Entraîner le modèle
-pipeline.fit(X, y)
-
-import lime
-import lime.lime_text
-
-class_names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-
-# Créer un explainer LIME pour le texte
-explainer = lime.lime_text.LimeTextExplainer(class_names=class_names)
+identificateur_label = pipeline("text-classification", model=model, tokenizer=tokenizer)
 
 
 
@@ -137,12 +57,12 @@ input_type = st.radio("Choisissez la manière de d'entre la description", ["Uplo
 
 
 
-def remove_html_tags_func(text):
-    soup = BeautifulSoup(text, 'html.parser')
-    for tag in soup.find_all(True):
-        tag.name = "p"
-    text = soup.get_text(separator=' ')
-    return re.sub(r'\s\s+', ' ', text)
+
+def remove_html_tags_func_regex(text):
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'\s\s+', ' ', text)
+    text = re.sub(r'-->', '', text)
+    return text
 
 def remove_url_func(text):
     return re.sub(r'https?://\S+|www\.\S+', '', text)
@@ -157,75 +77,177 @@ def remove_appos(text):
     return re.sub(r"^'|'$", "", text)
 
 
+def prediction_analyse(texte_input):
+    if len(texte_input) > 512:
+        texte_input = texte_input[:512]
+    label_predict = identificateur_label(texte_input, top_k=2)
+    cls_explainer = SequenceClassificationExplainer(
+    model,
+    tokenizer
+    )
+    temp_list = []
+    content_file = ""
+    for i in range(len(label_predict)):
+        tempo_explainer = cls_explainer(texte_input, class_name=label_predict[i]["label"])
+        temp_list.append((label_predict[i]["label"] , dict([("mot_cle",(sorted(tempo_explainer, key=(lambda x: x[1]), reverse=True))[:2]), ("score", label_predict[i]["score"])])))
+        cls_explainer.visualize("distilbert_viz.html")
+        file = open(r"./distilbert_viz.html","r")
+        content_file += file.read()
+        print(content_file)
+        content_file += "<br>"
+        print(content_file)
+        file.close()
+    #temp_list = [(label_predict[i]["label"] , dict([("mot_cle",(sorted(cls_explainer(texte_input, class_name=label_predict[i]["label"]), key=(lambda x: x[1]), reverse=True))[:2]), ("score", label_predict[i]["score"])])) for i in range(len(label_predict))]
+    #content_file = content_file.replace(label_predict[len(label_predict) - 1]["label"][6:], dictionnaire_convertion_label_2[label_predict[len(label_predict) - 1]["label"]])
+    key_word = dict(temp_list)
+    file = open(r"./distilbert_viz.html","w")
+    file.write("")
+    file.close()
+    for i in range(len(label_predict)):
+        content_file = content_file.replace(label_predict[i]["label"], dictionnaire_convertion_label_2[label_predict[i]["label"]])
+        content_file = content_file.replace(label_predict[i]["label"][6:], dictionnaire_convertion_label_2[label_predict[i]["label"]])
+    return key_word, content_file
 
 
+def get_score(dic_label, label):
+    return dic_label[label]["score"]
+
+def afficheur_resultat(resulat_analyse):
+    tempo_list_string = [convertit_label(i) + f"score : {get_score(dic_label=resulat_analyse, label=i) * 100 :.2f} %" + "<br>Mots clés :<ul> " + ("".join([f"<li>{j[0]} (correlation : {j[1]:.2f})</li>"  for j in resulat_analyse[i]["mot_cle"]])) + "</ul>" for i in resulat_analyse ] 
+    res = "<ol>" + ("".join(f"<li>{e}</li>" for e in tempo_list_string)) + "</ol>"
+    return res
 
 
 if input_type == "Uploader un fichier":
     file_uploaded = st.file_uploader("Mettez votre brevet", type=None, accept_multiple_files=False, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible")
     if file_uploaded is not None:
         df_user = pd.read_csv(file_uploaded, sep=";")
-        df_user['description'] = df_user['description'].apply(remove_html_tags_func)
+        df_user['description'] = df_user['description'].apply(remove_html_tags_func_regex)
         df_user['description'] = df_user['description'].apply(remove_url_func)
         df_user['description'] = df_user['description'].apply(remove_extra_whitespaces_func)
         df_user['description'] = df_user['description'].apply(replace_fig_with_img)
         st.write(df_user)
         X_user = df_user['description'].tolist()
         text_instance = X_user[0][:2000]
-        # Obtenir les probabilités de prédiction pour cet exemple
-        proba = pipeline.predict_proba([text_instance])
-        # Identifier les deux classes avec les probabilités les plus élevées
-        top_labels = np.argsort(proba[0])[::-1][:2]
-        st.write(top_labels)
-        # Obtenir une explication pour cet exemple
-        exp = explainer.explain_instance(text_instance, pipeline.predict_proba, num_features=6, labels=top_labels)
-        # Afficher l'explication pour les deux classes les plus représentées
-        for label in top_labels:
-            tempo_html = exp.as_html(labels=(label,))
-            components.html(tempo_html, scrolling=True)
+        analysis, file_data = prediction_analyse(text_instance)
+        st.html(afficheur_resultat(analysis))
+        st.download_button(label="rapport", data=file_data, file_name=f"rapport_{ti.time()}.html")
+        
+        
 
-
-elif input_type == "Copier la description du brevet":
+# Partie principale de l'application Streamlit
+if input_type == "Copier la description du brevet":
     st.title("Veuillez copier la description dans le chat")
-    #initialisation
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    
-    # affiche de l'historique des message de la session
-    for messages in st.session_state.messages:
-        with st.chat_message(messages["role"]):
-            if messages["role"] == "utilisateur":
-                st.markdown(messages["content"])
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            if message["role"] != "Identifieur":
+                st.markdown(message["content"])
             else:
-                components.html(messages["content"], scrolling=True)
-    
-    # widget accpetant l'input de l'utilisateur
+                st.html(message["content"][0])
+                st.download_button(label="Rapport", data=message["content"][1], file_name=f"rapport_{ti.time()}.html")
+
     if prompt := st.chat_input("Copiez la description"):
-        #affichage du message
         with st.chat_message("utilisateur"):
             st.markdown(prompt)
-        #ajout du nouveau message 
+
         st.session_state.messages.append({"role": "utilisateur", "content": prompt})
-        prompt = remove_html_tags_func(prompt)
-        prompt = remove_url_func(prompt)
-        prompt = remove_extra_whitespaces_func(prompt)
-        prompt = replace_fig_with_img(prompt)
-        text_instance = prompt
-        # Obtenir les probabilités de prédiction pour cet exemple
-        proba = pipeline.predict_proba([text_instance])
-        # Identifier les deux classes avec les probabilités les plus élevées
-        top_labels = np.argsort(proba[0])[::-1][:2]
-        exp = explainer.explain_instance(text_instance, pipeline.predict_proba, num_features=6, labels=top_labels)
-        # Afficher l'explication pour les deux classes les plus représentées
-        #affichage de la reponse dans la chat
-        with st.chat_message("Identifieur"):
-            for label in top_labels:
-                components.html(exp.as_html(text=True, labels=(label,)), scrolling=True)
-        #ajout du message à l'historique
-        print(top_labels)
-        for label in top_labels:
-            tempo_html = exp.as_html(text=True, labels=(label,))
-            st.session_state.messages.append({"role": "Identifieur", "content": tempo_html})
+
+        # Exemple de réponse automatique du chatbot pour guider l'utilisateur
+        if "description" not in st.session_state:
+            st.session_state.description = ""
+
+        if st.session_state.description == "":
+            with st.spinner("Prétraitement de la description..."):
+                # Prétraitement de la description (à remplacer par votre fonction de prétraitement)
+                st.session_state.description = remove_html_tags_func_regex(prompt)
+                st.session_state.description = remove_url_func(st.session_state.description)
+                st.session_state.description = remove_extra_whitespaces_func(st.session_state.description)
+                st.session_state.description = replace_fig_with_img(st.session_state.description)
+                text_instance = st.session_state.description
+
+                # Obtention des probabilités de prédiction pour cet exemple
+                analysis, file_data = prediction_analyse(text_instance)
+
+                tempo_string = afficheur_resultat(analysis)
+                with st.chat_message("Identifieur"):
+                    st.html(tempo_string)
+                    st.download_button(label="Rapport", data=file_data, file_name=f"rapport_{ti.time()}.html")
+
+                st.session_state.messages.append({"role": "Identifieur", "content": [tempo_string, file_data]})
+        
+        # Formulaire pour saisir le titre du brevet
+        with st.form(key='brevet_title_form'):
+            brevet_title = st.text_input("Entrez le titre du brevet :")
+            submit_button = st.form_submit_button(label='Sauvegarder les données')
+
+            if submit_button:
+                st.write(f"Soumission du formulaire confirmée. Titre du brevet : {brevet_title}")  # Vérifiez que vous atteignez ce point
+                if brevet_title:
+                    st.write(f"Titre du brevet confirmé : {brevet_title}")  # Débogage
+                    with st.spinner('Stockage des informations...'):
+                        try:
+                            # Connexion à la base de données et insertion du titre du brevet
+                            conn = mysql.connector.connect(
+                                host=DB_CONFIG['host'],
+                                port=DB_CONFIG['port'],
+                                database=DB_CONFIG['database'],
+                                user=DB_CONFIG['user'],
+                                password=DB_CONFIG['password']
+                            )
+                            if conn.is_connected():
+                                cursor = conn.cursor()
+                                
+                                cursor.execute("INSERT INTO Brevet (brevet_titre) VALUES (%s)", (brevet_title,))
+                                brevet_id = cursor.lastrowid
+                                conn.commit()
+                                
+                                # Insertion des labels CPC et mots-clés associés
+                                for label, info in analysis.items():
+                                    label_cpc = label[6:]
+                                    score = info["score"]
+                                    for mot, correlation in info["mot_cle"]:
+                                        cursor.execute("SELECT * FROM CPC WHERE label_cpc = %s", (label_cpc,))
+                                        result = cursor.fetchone()
+                                        if not result:
+                                            cursor.execute("INSERT INTO CPC (label_cpc) VALUES (%s)", (label_cpc,))
+                                            conn.commit()
+                                        
+                                        cursor.execute("SELECT id_mot FROM Mot WHERE mot_cle = %s", (mot,))
+                                        result = cursor.fetchone()
+                                        if result:
+                                            id_mot = result[0]
+                                        else:
+                                            cursor.execute("INSERT INTO Mot (mot_cle) VALUES (%s)", (mot,))
+                                            id_mot = cursor.lastrowid
+                                            conn.commit()
+                                        
+                                        cursor.execute("INSERT INTO Labeliser_cpc (id_brevet, label_cpc, id_mot) VALUES (%s, %s, %s)", (brevet_id, label_cpc, id_mot))
+                                        conn.commit()
+
+                                st.success("Les informations ont été stockées avec succès.")
+
+                            else:
+                                st.error("Connexion à la base de données échouée.")
+
+                        except mysql.connector.Error as e:
+                            st.error(f"Erreur lors de la connexion à la base de données : {e}")
+
+                        finally:
+                            if 'conn' in locals() and conn.is_connected():
+                                cursor.close()
+                                conn.close()
+                                st.write("Connexion à la base de données fermée.")
+
+                else:
+                    st.warning("Veuillez saisir un titre pour le brevet.")
+
+
+
+
 
 
 
