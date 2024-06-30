@@ -50,12 +50,7 @@ model.eval()
 identificateur_label = pipeline("text-classification", model=model, tokenizer=tokenizer)
 
 
-
-
-
 input_type = st.radio("Choisissez la manière de d'entre la description", ["Uploader un fichier", "Copier la description du brevet"], index=None)
-
-
 
 
 def remove_html_tags_func_regex(text):
@@ -135,7 +130,6 @@ if input_type == "Uploader un fichier":
         
         
 
-# Partie principale de l'application Streamlit
 if input_type == "Copier la description du brevet":
     st.title("Veuillez copier la description dans le chat")
 
@@ -156,20 +150,18 @@ if input_type == "Copier la description du brevet":
 
         st.session_state.messages.append({"role": "utilisateur", "content": prompt})
 
-        # Exemple de réponse automatique du chatbot pour guider l'utilisateur
         if "description" not in st.session_state:
             st.session_state.description = ""
 
         if st.session_state.description == "":
             with st.spinner("Prétraitement de la description..."):
-                # Prétraitement de la description (à remplacer par votre fonction de prétraitement)
+    
                 st.session_state.description = remove_html_tags_func_regex(prompt)
                 st.session_state.description = remove_url_func(st.session_state.description)
                 st.session_state.description = remove_extra_whitespaces_func(st.session_state.description)
                 st.session_state.description = replace_fig_with_img(st.session_state.description)
                 text_instance = st.session_state.description
 
-                # Obtention des probabilités de prédiction pour cet exemple
                 analysis, file_data = prediction_analyse(text_instance)
 
                 tempo_string = afficheur_resultat(analysis)
@@ -185,7 +177,7 @@ if input_type == "Copier la description du brevet":
             submit_button = st.form_submit_button(label='Sauvegarder les données')
 
             if submit_button:
-                st.write(f"Soumission du formulaire confirmée. Titre du brevet : {brevet_title}")  # Vérifiez que vous atteignez ce point
+                st.write(f"Soumission du formulaire confirmée. Titre du brevet : {brevet_title}")  
                 if brevet_title:
                     st.write(f"Titre du brevet confirmé : {brevet_title}")  # Débogage
                     with st.spinner('Stockage des informations...'):
