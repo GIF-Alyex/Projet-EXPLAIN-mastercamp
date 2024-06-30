@@ -24,7 +24,6 @@ from transformers import TextClassificationPipeline, pipeline, DistilBertForSequ
 import time as ti
 
 
-
 DB_CONFIG = st.secrets["mysql"]
 
 try:
@@ -101,6 +100,41 @@ def replace_fig_with_img(text):
 def remove_appos(text):
     return re.sub(r"^'|'$", "", text)
 
+def dict_get_keys(dictionnaire, key):
+    return dictionnaire[key]
+
+
+def apply_keyword_style(key_tuple, word):
+    res = word
+    if res.lower() == key_tuple[0].lower():
+        #print(res)
+        res = f"<strong style='font-size:{round(100 + 100 * key_tuple[1])}%; background-color:#{hex(round((1 - key_tuple[1]) * 255))[2:]}FF{hex(round((1 - key_tuple[1]) * 255))[2:]};'>{res}</strong>"
+        #print(res)
+    #print(f"RESULT : {res}")
+    return res
+    
+def highlight_key_word(tuple_key, texte_input):
+    return " ".join(list(map(lambda x: apply_keyword_style(tuple_key, x), texte_input.split()))) 
+
+def One_label_report(analyze_result, analyzed_texte):
+    #print(list(map(lambda x: apply_keyword_style("pigs", x), analyzed_texte.split())))
+    tempo = dictionnaire_convertion_label[int(analyze_result[0][6:])]
+    res = f"<h2>{tempo}</h2>"
+    tempo = dict_get_keys(analyze_result[1], "score")
+    res += f"<h3>Score : {(tempo*100):.2f} % </h3>"
+    tempo = dict_get_keys(analyze_result[1], "mot_cle")
+    res += "<br>".join([f"{i[0]} (contribution : {float(i[1]):.2f})" for i in tempo])
+    res += "<br>"
+    tempo_string = analyzed_texte[:]
+    tempo = dict_get_keys(analyze_result[1], "mot_cle")
+    for i in tempo:
+        res += ("<p>" + highlight_key_word(i, tempo_string) + "</p><br>")
+        #print(tempo_string)
+    return res
+
+def add_key_word(list_key_word):
+    return list(filter(lambda x: x[1] + 0.02 >= list_key_word[0][1], list_key_word))
+
 
 def prediction_analyse(texte_input):
     if len(texte_input) > 512:
@@ -114,23 +148,21 @@ def prediction_analyse(texte_input):
     content_file = ""
     for i in range(len(label_predict)):
         tempo_explainer = cls_explainer(texte_input, class_name=label_predict[i]["label"])
-        temp_list.append((label_predict[i]["label"] , dict([("mot_cle",(sorted(tempo_explainer, key=(lambda x: x[1]), reverse=True))[:2]), ("score", label_predict[i]["score"])])))
-        cls_explainer.visualize("distilbert_viz.html")
+        temp_list.append((label_predict[i]["label"] , dict([("mot_cle", add_key_word(sorted(tempo_explainer, key=(lambda x: x[1]), reverse=True))), ("score", label_predict[i]["score"])])))
+        content_file += One_label_report(temp_list[-1], texte_input)
+        """cls_explainer.visualize("distilbert_viz.html")
         file = open(r"./distilbert_viz.html","r")
         content_file += file.read()
         print(content_file)
         content_file += "<br>"
         print(content_file)
-        file.close()
+        file.close()"""
     #temp_list = [(label_predict[i]["label"] , dict([("mot_cle",(sorted(cls_explainer(texte_input, class_name=label_predict[i]["label"]), key=(lambda x: x[1]), reverse=True))[:2]), ("score", label_predict[i]["score"])])) for i in range(len(label_predict))]
     #content_file = content_file.replace(label_predict[len(label_predict) - 1]["label"][6:], dictionnaire_convertion_label_2[label_predict[len(label_predict) - 1]["label"]])
     key_word = dict(temp_list)
-    file = open(r"./distilbert_viz.html","w")
-    file.write("")
-    file.close()
-    for i in range(len(label_predict)):
+    """for i in range(len(label_predict)):
         content_file = content_file.replace(label_predict[i]["label"], dictionnaire_convertion_label_2[label_predict[i]["label"]])
-        content_file = content_file.replace(label_predict[i]["label"][6:], dictionnaire_convertion_label_2[label_predict[i]["label"]])
+        content_file = content_file.replace(label_predict[i]["label"][6:], dictionnaire_convertion_label_2[label_predict[i]["label"]])"""
     return key_word, content_file
 
 
