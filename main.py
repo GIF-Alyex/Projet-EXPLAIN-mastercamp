@@ -137,6 +137,10 @@ def add_key_word(list_key_word):
     return list(filter(lambda x: x[1] + 0.01 >= list_key_word[0][1], list_key_word))
 
 
+def text_highlight(list_word, texte_content):
+    maximum = max(list_word, key=lambda x: x[1])[1]
+    res = " ".join([f"<strong style='font-size:{round(100 + 100 * i[1])}%; background-color:#{hex(round((1 - i[1]) * 255))[2:]}FF{hex(round((1 - i[1]) * 255))[2:]};'>{i[0]}</strong>" if i[1] + 0.01 >= maximum else str(i[0])  for i in list_word[1:-1]])
+    return res
 
 def prediction_analyse(texte_input):
     if len(texte_input) > 512:
