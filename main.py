@@ -116,10 +116,13 @@ def apply_keyword_style(key_tuple, word):
 def highlight_key_word(tuple_key, texte_input):
     return " ".join(list(map(lambda x: apply_keyword_style(tuple_key, x), texte_input.split()))) 
 
+dictionnaire_categorie = {"A":"Nécessités humaines", "B":"Operation et transport","C":"Chimie et Métalurgie", "D":"Tissue et papier", "E": "Construction", "F":"Mechanique, électricité, chauffage, arme et explosion", "G":"Physique", "H":"Électricité","Y":"Nouvelle technologie, nouvelle technologie concerant plusieurs domaines"}
+
 def One_label_report(analyze_result, analyzed_texte):
     #print(list(map(lambda x: apply_keyword_style("pigs", x), analyzed_texte.split())))
     tempo = dictionnaire_convertion_label[int(analyze_result[0][6:])]
     res = f"<h2>{tempo}</h2>"
+    res += f"<h3> Catégorie {tempo[0]} : {dictionnaire_categorie[tempo[0]]}</h3>"
     tempo = dict_get_keys(analyze_result[1], "score")
     res += f"<h3>Score : {(tempo*100):.2f} % </h3>"
     tempo = dict_get_keys(analyze_result[1], "mot_cle")
@@ -128,8 +131,9 @@ def One_label_report(analyze_result, analyzed_texte):
     tempo_string = analyzed_texte[:]
     tempo = dict_get_keys(analyze_result[1], "mot_cle")
     for i in tempo:
-        res += ("<p>" + highlight_key_word(i, tempo_string) + "</p><br>")
+        tempo_string =  highlight_key_word(i, tempo_string) 
         #print(tempo_string)
+    res += ("<p>" + tempo_string + "</p><br>")
     return res
 
 def add_key_word(list_key_word):
@@ -150,19 +154,7 @@ def prediction_analyse(texte_input):
         tempo_explainer = cls_explainer(texte_input, class_name=label_predict[i]["label"])
         temp_list.append((label_predict[i]["label"] , dict([("mot_cle", add_key_word(sorted(tempo_explainer, key=(lambda x: x[1]), reverse=True))), ("score", label_predict[i]["score"])])))
         content_file += One_label_report(temp_list[-1], texte_input)
-        """cls_explainer.visualize("distilbert_viz.html")
-        file = open(r"./distilbert_viz.html","r")
-        content_file += file.read()
-        print(content_file)
-        content_file += "<br>"
-        print(content_file)
-        file.close()"""
-    #temp_list = [(label_predict[i]["label"] , dict([("mot_cle",(sorted(cls_explainer(texte_input, class_name=label_predict[i]["label"]), key=(lambda x: x[1]), reverse=True))[:2]), ("score", label_predict[i]["score"])])) for i in range(len(label_predict))]
-    #content_file = content_file.replace(label_predict[len(label_predict) - 1]["label"][6:], dictionnaire_convertion_label_2[label_predict[len(label_predict) - 1]["label"]])
     key_word = dict(temp_list)
-    """for i in range(len(label_predict)):
-        content_file = content_file.replace(label_predict[i]["label"], dictionnaire_convertion_label_2[label_predict[i]["label"]])
-        content_file = content_file.replace(label_predict[i]["label"][6:], dictionnaire_convertion_label_2[label_predict[i]["label"]])"""
     return key_word, content_file
 
 
