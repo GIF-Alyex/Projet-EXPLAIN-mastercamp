@@ -128,17 +128,45 @@ def One_label_report(analyze_result, analyzed_texte):
     tempo = dict_get_keys(analyze_result[1], "mot_cle")
     res += "<br>".join([f"{i[0]} (contribution : {float(i[1]):.2f})" for i in tempo])
     res += "<br>"
-    tempo_string = analyzed_texte[:]
+    """tempo_string = analyzed_texte[:]
     tempo = dict_get_keys(analyze_result[1], "mot_cle")
     for i in tempo:
         tempo_string =  highlight_key_word(i, tempo_string) 
         #print(tempo_string)
-    res += ("<p>" + tempo_string + "</p><br>")
+    res += ("<p>" + tempo_string + "</p><br>")"""
     return res
 
 def add_key_word(list_key_word):
     return list(filter(lambda x: x[1] + 0.02 >= list_key_word[0][1], list_key_word))
 
+
+liste_ponctuation = [",","?",";","!","."]
+
+def recreate_sentence(sentence):
+    res = sentence[0]
+    for i in sentence[1:]:
+        if i in liste_ponctuation:
+            res += i
+        else:
+            res +=  (" " + i)
+    return res
+
+
+def text_highlight(list_word):
+    maximum = max(list_word[1:-1], key=lambda x: x[1])[1]
+    temp_list = [f"<strong style='font-size:{round(100 + 100 * i[1])}%; background-color:#{hex(round((1 - i[1]) * 255))[2:]}FF{hex(round((1 - i[1]) * 255))[2:]};'>{i[0]}</strong>" if i[1] + 0.02 >= maximum else str(i[0])  for i in list_word[1:-1]]
+    res = recreate_sentence(temp_list)
+    return res
+
+
+def remove_hachtag(heatlist):
+    res = list()
+    for i in heatlist:
+        if "##" == i[0][:2]:
+            res[-1] = (res[-1][0] + i[0][2:], (res[-1][1] + i[1])/2)
+        else:
+            res.append(i)
+    return res
 
 def prediction_analyse(texte_input):
     if len(texte_input) > 512:
@@ -152,8 +180,11 @@ def prediction_analyse(texte_input):
     content_file = ""
     for i in range(len(label_predict)):
         tempo_explainer = cls_explainer(texte_input, class_name=label_predict[i]["label"])
-        temp_list.append((label_predict[i]["label"] , dict([("mot_cle", add_key_word(sorted(tempo_explainer, key=(lambda x: x[1]), reverse=True))), ("score", label_predict[i]["score"])])))
+        tempo_explainer = remove_hachtag(tempo_explainer)
+        #print(sorted(tempo_explainer, reverse=True, key=lambda x: x[1]))
+        temp_list.append((label_predict[i]["label"] , dict([("mot_cle", add_key_word(sorted(tempo_explainer[1:-1], key=(lambda x: x[1]), reverse=True))), ("score", label_predict[i]["score"])])))
         content_file += One_label_report(temp_list[-1], texte_input)
+        content_file += ("<p>" + text_highlight(tempo_explainer) +"</p><br>")
     key_word = dict(temp_list)
     return key_word, content_file
 
