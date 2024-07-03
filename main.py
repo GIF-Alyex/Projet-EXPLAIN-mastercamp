@@ -128,12 +128,6 @@ def One_label_report(analyze_result, analyzed_texte):
     tempo = dict_get_keys(analyze_result[1], "mot_cle")
     res += "<br>".join([f"{i[0]} (contribution : {float(i[1]):.2f})" for i in tempo])
     res += "<br>"
-    """tempo_string = analyzed_texte[:]
-    tempo = dict_get_keys(analyze_result[1], "mot_cle")
-    for i in tempo:
-        tempo_string =  highlight_key_word(i, tempo_string) 
-        #print(tempo_string)
-    res += ("<p>" + tempo_string + "</p><br>")"""
     return res
 
 def add_key_word(list_key_word):
