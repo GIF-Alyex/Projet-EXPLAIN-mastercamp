@@ -1,7 +1,8 @@
 import streamlit as st
-import mysql.connector
 import pandas as pd
+import numpy as np
 from io import StringIO
+import mysql.connector
 
 import torch
 
@@ -10,7 +11,6 @@ from transformers import TrainingArguments, Trainer, AutoTokenizer, AutoModelFor
 import re
 from bs4 import BeautifulSoup
 
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
@@ -23,6 +23,13 @@ from transformers_interpret import MultiLabelClassificationExplainer, SequenceCl
 from transformers import TextClassificationPipeline, pipeline, DistilBertForSequenceClassification, DistilBertTokenizer
 import time as ti
 
+import streamlit_authenticator as stauth
+from streamlit_authenticator import Authenticate    
+from streamlit_navigation_bar import st_navbar
+import pages as pg
+import os
+from streamlit_option_menu import option_menu
+import yaml
 
 DB_CONFIG = st.secrets["mysql"]
 
@@ -47,9 +54,152 @@ finally:
         conn.close()
         print('MySQL connection closed')
 
+# Configuration du nom et de l'îcone de la page 
+st.set_page_config(page_title="EXPLAIN", page_icon="🔲", layout="wide", initial_sidebar_state="auto")
 
-import re
-from bs4 import BeautifulSoup
+# Configuration de la première barre de tâche 
+pages = ["Documentation", "Tutorials", "Examples", "Community", "GitHub","                                     ","                   ","Settings","Features"]
+parent_dir = os.path.dirname(os.path.abspath(__file__))
+logo_path = os.path.join(parent_dir, "./assets/logo.svg")
+settings_image_path = os.path.join(parent_dir, "./assets/settings.svg")
+urls = {"GitHub": "https://github.com/GIF-Alyex/Projet-EXPLAIN-mastercamp",}
+styles = {
+    "nav": {
+        "background-color": "#1D2A35",
+        "justify-content": "space-between",
+        "height": "75px",
+    },
+    "img": {
+        "height":"350px",
+        "margin-top": "14px",
+        "margin-left": "-10px",
+        "padding-left": "-200px",
+    },
+    "span": {
+        "color": "#DDDDDD",
+        "padding": "30px",
+        "font-family": "Source Sans Pro Topnav, sans-serif",
+        "font-size": "20px",
+    },
+    "active": {
+        "color": "var(--text-color)",
+        "font-weight": "normal",
+        "padding": "30px",
+        "font-family": "Source Sans Pro Topnav, sans-serif",
+        "font-size": "20px",
+    },
+    "hover": {
+        "background-color": "#04AA6D",
+    },
+    
+}
+options = {"show_sidebar": False, "show_menu": False,}
+
+page = st_navbar(
+    pages,
+    logo_path=logo_path,
+    urls=urls,
+    styles=styles,
+    options=options,
+)
+
+# Configuration de la deuxième barre de tâche
+st.markdown(
+    """
+    <style>
+    .navbar {
+        overflow-x: auto;
+        background-color: #2a2d30;
+        width: 100%;
+        position: fixed;
+        top: 75px;
+        left: 0;
+        z-index: 100;
+        white-space: nowrap;
+    }
+
+    .navbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .navbar a {
+        display: inline-block;
+        width: auto;
+        color: inherit;
+        padding: 5px 15px 5px 15px;
+        text-decoration: none;
+        font-size: 23px;
+        line-height: 1.5;
+        box-sizing: inherit;
+        font-family: 'Source Sans Pro Topnav', sans-serif;
+        border-radius: 15px; 
+    }
+
+    .navbar a:hover {
+        background-color: black;
+        color: #f2f2f2;
+    }
+
+    .navbar a.selected {
+        background-color: black;
+        color: #f2f2f2;
+        border-radius: 15px;
+    }
+
+    .navbar img {
+        height: 40px;
+        margin-right: 16px;
+    }
+    
+    </style>
+    <div class="navbar">
+        <a href="#">Fichier .txt</a>
+        <a href="#">Fichier .md</a>
+        <a href="#">Fichier .doc</a>
+        <a href="#">Fichier .odt</a>
+        <a href="#">Fichier .rtf</a>
+        <a href="#">Fichier .tex</a>
+        <a href="#">Fichier .rst</a>
+        <a href="#">Fichier .todo</a>
+        <a href="#">Fichier .org</a>
+        <a href="#">Fichier .adoc</a>
+        <a href="#">Fichier .rdoc</a>
+        <a href="#">Fichier .ppt</a>
+        <a href="#">Fichier .odp</a>
+    </div>
+    """
+, unsafe_allow_html=True)
+
+# Mise en place d'une image en fond de l'application
+page_bg_img = """
+<style>
+[data-testid="stAppViewContainer"] > .main {
+width: 100%;
+height: 100%;
+background-size: cover;
+background-position: center center;
+background-repeat: no-repeat;
+height: 100vh;
+background-image: url("https://raw.githubusercontent.com/Theooo91/image/c5faa5305508abcdbdd105bf56f3f1d17f472d5a/magicpattern-starry-night-1719566881352.png");
+}
+
+
+</style>
+"""
+st.markdown(page_bg_img, unsafe_allow_html=True)
+
+# Charger le fichier css
+with open("./style/style.css") as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+# En tête de l'application
+st.markdown("<br><br><br><br>", unsafe_allow_html=True)
+st.markdown('<h1 class="custom-text">Simplify your patent</h1>', unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown('<h1 class="custom-text2">Explainable Patent Learning for Artificial Intelligence</h1>', unsafe_allow_html=True)
+
+
+st.markdown("<br><br><br><br>", unsafe_allow_html=True)
 
 dictionnaire_convertion_label = {0: 'A01', 1: 'A21', 2: 'A22', 3: 'A23', 4: 'A24', 5: 'A41', 6: 'A42', 7: 'A43', 8: 'A44', 9: 'A45', 10: 'A46', 11: 'A47', 12: 'A61', 13: 'A62', 14: 'A63', 15: 'B01', 16: 'B02', 17: 'B03', 18: 'B04', 19: 'B05', 20: 'B06', 21: 'B07', 22: 'B08', 23: 'B09', 24: 'B21', 25: 'B22', 26: 'B23', 27: 'B24', 28: 'B25', 29: 'B26', 30: 'B27', 31: 'B28', 32: 'B29', 33: 'B30', 34: 'B31', 35: 'B32', 36: 'B33', 37: 'B41', 38: 'B42', 39: 'B43', 40: 'B44', 41: 'B60', 42: 'B61', 43: 'B62', 44: 'B63', 45: 'B64', 46: 'B65', 47: 'B66', 48: 'B67', 49: 'B68', 50: 'B81', 51: 'B82', 52: 'C01', 53: 'C02', 54: 'C03', 55: 'C04', 56: 'C05', 57: 'C06', 58: 'C07', 59: 'C08', 60: 'C09', 61: 'C10', 62: 'C11', 63: 'C12', 64: 'C13', 65: 'C14', 66: 'C21', 67: 'C22', 68: 'C23', 69: 'C25', 70: 'C30', 71: 'C40', 72: 'D01', 73: 'D02', 74: 'D03', 75: 'D04', 76: 'D05', 77: 'D06', 78: 'D07', 79: 'D10', 80: 'D21', 81: 'E01', 82: 'E02', 83: 'E03', 84: 'E04', 85: 'E05', 86: 'E06', 87: 'E21', 88: 'F01', 89: 'F02', 90: 'F03', 91: 'F04', 92: 'F05', 93: 'F15', 94: 'F16', 95: 'F17', 96: 'F21', 97: 'F22', 98: 'F23', 99: 'F24', 100: 'F25', 101: 'F26', 102: 'F27', 103: 'F28', 104: 'F41', 105: 'F42', 106: 'G01', 107: 'G02', 108: 'G03', 109: 'G04', 110: 'G05', 111: 'G06', 112: 'G07', 113: 'G08', 114: 'G09', 115: 'G10', 116: 'G11', 117: 'G16', 118: 'G21', 119: 'H01', 120: 'H02', 121: 'H03', 122: 'H04', 123: 'H05', 124: 'H10', 125: 'Y02', 126: 'Y04', 127: 'Y10'}
 dictionnaire_convertion_label_2 = dict([(f"LABEL_{i[0]}", i[1]) for i in dictionnaire_convertion_label.items()])
@@ -75,9 +225,6 @@ identificateur_label = pipeline("text-classification", model=model, tokenizer=to
 
 
 
-
-
-input_type = st.radio("Choisissez la manière de d'entre la description", ["Uploader un fichier", "Copier la description du brevet"], index=None)
 
 
 
@@ -192,25 +339,8 @@ def afficheur_resultat(resulat_analyse):
     return res
 
 
-if input_type == "Uploader un fichier":
-    file_uploaded = st.file_uploader("Mettez votre brevet", type=None, accept_multiple_files=False, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible")
-    if file_uploaded is not None:
-        df_user = pd.read_csv(file_uploaded, sep=";")
-        df_user['description'] = df_user['description'].apply(remove_html_tags_func_regex)
-        df_user['description'] = df_user['description'].apply(remove_url_func)
-        df_user['description'] = df_user['description'].apply(remove_extra_whitespaces_func)
-        df_user['description'] = df_user['description'].apply(replace_fig_with_img)
-        st.write(df_user)
-        X_user = df_user['description'].tolist()
-        text_instance = X_user[0][:2000]
-        analysis, file_data = prediction_analyse(text_instance)
-        st.html(afficheur_resultat(analysis))
-        st.download_button(label="rapport", data=file_data, file_name=f"rapport_{ti.time()}.html")
-        
-        
 
-elif input_type == "Copier la description du brevet":
-    st.title("Veuillez copier la description dans le chat")
+if True:
     #initialisation
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -248,5 +378,4 @@ elif input_type == "Copier la description du brevet":
         #ajout du message à l'historique
         st.session_state.messages.append({"role": "Identifieur", "content": [tempo_string, file_data]})
 
-
-
+st.markdown("<br><br><br><br><br><br>", unsafe_allow_html=True)
